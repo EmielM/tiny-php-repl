@@ -1,0 +1,71 @@
+#!/usr/bin/rlwrap /usr/bin/php
+<?php
+$entryPoint = false;
+	// set to e.g. dirname(__FILE__) . "/base.php" to include before first command
+
+$stdin = fopen("php://stdin", 'r');
+
+if ($pid = pcntl_fork()) {
+	assert($pid >= 0);
+	// master: linger indefinitely so the terminal stays attached
+	while (1) sleep(999999);
+}
+
+declare(ticks = 1);
+pcntl_signal(SIGCHLD, function(){}, false);
+	// signal should abort reading the okPipe in the tumbling parent	
+
+$includes = array();
+while (1) { 
+	echo ">> "; flush();
+	$line = fgets($stdin);
+
+	socket_create_pair(AF_UNIX, SOCK_STREAM, 0, $okPipe);
+	
+	if ($pid = pcntl_fork()) {
+		assert($pid >= 0);
+		// tumbling parent: wait for result on pipe
+
+		while (!pcntl_waitpid($pid,$status,WNOHANG)) {
+			if (@socket_read($okPipe[0], 1) == 'x')
+				exit(0); // child execution worked well.. we can exit
+		}
+		echo "php fork died while executing\n";
+	}
+	else {
+		// tumbling child: try to execute $line
+
+		// check includes
+		if (!$includes && $entryPoint) {
+			// initial include
+			include $entryPoint;
+		}
+		else {
+			$files = get_included_files();
+			foreach ($files as $f) {
+				$mtime = @filemtime($f);
+				if ($mtime && isset($includes[$f]) && $includes[$f] != $mtime) {
+					if (function_exists('runkit_import')) {
+						echo "reloading $f\n";
+						runkit_import($f);
+					}
+					else echo "warning: $f has changed\n";
+				}
+			}
+		}
+
+		//$line = preg_replace('/(;|^)([^;]+?);?$/', '$1return $2;', $line);
+		$res = eval("return $line;");
+		print_r($res); echo "\n";
+
+		// construct new includes map
+		$files = get_included_files();
+		foreach ($files as $f) {
+			$mtime = @filemtime($f);
+			if ($mtime) $includes[$f] = $mtime;
+		}
+
+		// tell parent all is well so it can quit
+		socket_write($okPipe[1],  'x');
+	}
+}

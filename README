@@ -1,0 +1,13 @@
+tiny-php-repl: tiny yet useful php repl featuring
+- tumbling fork to preserve state when php crashes
+- not dependent on php-readline (licensing issues), use separate /usr/bin/rlwrap
+- changed sources are tracked, and dynamicly reloaded if runkit is installed
+- around 75 loc 
+
+issues/todo
+- ctrl-d makes things go havoc
+- not really checked if the children are killed in all scenarios
+- it's ludicrous a socket_create_pair is used, we only need monodirectional
+- not really checked if inheritence of the stdin fd is ok in all cases
+
+license: http://creativecommons.org/licenses/by/3.0
